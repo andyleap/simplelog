@@ -1,0 +1,7 @@
+# Used by GoReleaser: the binary is already built and placed in the build
+# context, so this just wraps it in a distroless image. BIN selects which
+# binary (agent or manager) to package.
+FROM gcr.io/distroless/static-debian12
+ARG BIN
+COPY ${BIN} /service
+ENTRYPOINT ["/service"]

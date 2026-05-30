@@ -1,0 +1,67 @@
+# simplelog manager: single-replica StatefulSet. No PVC — local disk is an
+# emptyDir scratch/cache; S3 is the only durable store and the catalog is
+# rebuilt from it on startup.
+apiVersion: v1
+kind: Service
+metadata:
+  name: simplelog-manager
+  namespace: simplelog
+  labels: { app: simplelog-manager }
+spec:
+  clusterIP: None # headless: stable DNS for the single replica
+  selector: { app: simplelog-manager }
+  ports:
+    - { name: ingest, port: 9000, targetPort: 9000 }
+    - { name: http, port: 8080, targetPort: 8080 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: simplelog-manager
+  namespace: simplelog
+spec:
+  serviceName: simplelog-manager
+  replicas: 1
+  selector:
+    matchLabels: { app: simplelog-manager }
+  template:
+    metadata:
+      labels: { app: simplelog-manager }
+      # Opt this pod out of ingestion so the manager's own logs are never tailed.
+      annotations: { simplelog.io/ingest: "false" }
+    spec:
+      # Generous grace period so SIGTERM can seal + upload the open segment.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: manager
+          image: ghcr.io/andyleap/simplelog-manager:latest
+          args: ["-base-dir=/data"]
+          ports:
+            - { name: ingest, containerPort: 9000 }
+            - { name: http, containerPort: 8080 }
+          env:
+            - { name: SL_MANAGER_ID, value: "mgr1" }
+            - { name: SL_SEG_BYTES, value: "67108864" } # 64 MiB
+            - { name: SL_SEG_AGE, value: "5m" } # also bounds agent hold time
+            - { name: SL_CACHE_BYTES, value: "2147483648" } # 2 GiB
+            - { name: SL_S3_BUCKET, valueFrom: { secretKeyRef: { name: simplelog-s3, key: bucket } } }
+            - { name: SL_S3_DOMAIN, valueFrom: { secretKeyRef: { name: simplelog-s3, key: domain } } }
+            - { name: SL_S3_REGION, valueFrom: { secretKeyRef: { name: simplelog-s3, key: region } } }
+            - { name: SL_S3_PROTOCOL, valueFrom: { secretKeyRef: { name: simplelog-s3, key: protocol } } }
+            - { name: SL_S3_PATH_STYLE, valueFrom: { secretKeyRef: { name: simplelog-s3, key: pathStyle } } }
+            - { name: SL_S3_ACCESS_KEY, valueFrom: { secretKeyRef: { name: simplelog-s3, key: accessKey } } }
+            - { name: SL_S3_SECRET_KEY, valueFrom: { secretKeyRef: { name: simplelog-s3, key: secretKey } } }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        # emptyDir: ephemeral scratch/cache/catalog. Lost on reschedule and
+        # rebuilt from S3 by the manager on startup.
+        - name: data
+          emptyDir:
+            sizeLimit: 4Gi

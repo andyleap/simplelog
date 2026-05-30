@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package simplelog.ingest.v1;
+
+option go_package = "github.com/andyleap/simplelog/proto/ingestpb";
+
+// Ingest is the agent->manager log feed. The agent opens a single long-lived
+// bidirectional stream: it sends RecordBatches and receives Acks reporting the
+// highest offset durably committed (S3-sealed) per source. The agent only
+// advances its on-disk checkpoint after the corresponding Ack.
+service Ingest {
+  rpc Stream(stream RecordBatch) returns (stream Ack);
+}
+
+// RecordBatch carries a group of records. Each entry is a JSON-encoded
+// model.Record; encoding records as JSON avoids duplicating the (open, nested,
+// heterogeneous) log schema in protobuf and matches the on-disk segment format.
+message RecordBatch {
+  repeated bytes records = 1;
+}
+
+// Ack reports the highest committed offset for each source seen so far.
+message Ack {
+  repeated SourceOffset committed = 1;
+}
+
+// SourceOffset is a per-source high-water mark. source_key is model.Source.Key().
+message SourceOffset {
+  string source_key = 1;
+  int64 offset = 2;
+}

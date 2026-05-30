@@ -1,0 +1,93 @@
+# GoReleaser config: builds the agent and manager for linux/amd64+arm64,
+# packages each into a distroless image, and pushes multi-arch images to GHCR.
+# Run by .github/workflows/release.yml on tag push.
+version: 2
+
+project_name: simplelog
+
+before:
+  # Read-only: must not mutate tracked files, or `release` fails its clean-tree
+  # check. (go mod tidy can change go.sum, so we only download here.)
+  hooks:
+    - go mod download
+
+builds:
+  - id: agent
+    main: ./cmd/agent
+    binary: agent
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/andyleap/simplelog/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/andyleap/simplelog/internal/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/andyleap/simplelog/internal/buildinfo.Date={{ .Date }}
+  - id: manager
+    main: ./cmd/manager
+    binary: manager
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/andyleap/simplelog/internal/buildinfo.Version={{ .Version }}
+      - -X github.com/andyleap/simplelog/internal/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/andyleap/simplelog/internal/buildinfo.Date={{ .Date }}
+
+archives:
+  - id: default
+    ids: [agent, manager]
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+# dockers_v2 builds and pushes one multi-arch image per service (the manifest
+# is assembled automatically). Requires buildx + QEMU, set up in the workflow.
+dockers_v2:
+  - id: agent
+    ids: [agent]
+    images:
+      - "ghcr.io/andyleap/simplelog-agent"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    dockerfile: Dockerfile.goreleaser
+    build_args:
+      BIN: agent
+    labels:
+      org.opencontainers.image.source: "https://github.com/andyleap/simplelog"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+  - id: manager
+    ids: [manager]
+    images:
+      - "ghcr.io/andyleap/simplelog-manager"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    dockerfile: Dockerfile.goreleaser
+    build_args:
+      BIN: manager
+    labels:
+      org.opencontainers.image.source: "https://github.com/andyleap/simplelog"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+
+release:
+  github:
+    owner: andyleap
+    name: simplelog

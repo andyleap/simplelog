@@ -1,0 +1,5 @@
+# Local build outputs. Note: internal/ui/dist and proto/ingestpb are generated
+# but MUST be committed (the former is go:embed'd, the latter avoids needing
+# protoc at build time), so only the repo-root dirs are ignored.
+/bin/
+/dist/

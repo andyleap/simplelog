@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>simplelog</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">simplelog</div>
+    <form id="queryForm" autocomplete="off">
+      <textarea id="expr" rows="1" placeholder='query, e.g.  _namespace="prod" and level="error"'></textarea>
+      <div class="controls">
+        <select id="range" title="time range">
+          <option value="900">last 15m</option>
+          <option value="3600" selected>last 1h</option>
+          <option value="21600">last 6h</option>
+          <option value="86400">last 24h</option>
+          <option value="0">all time</option>
+          <option value="custom">custom…</option>
+        </select>
+        <input id="start" type="datetime-local" class="hidden" title="start">
+        <input id="end" type="datetime-local" class="hidden" title="end">
+        <select id="direction" title="order">
+          <option value="desc" selected>newest first</option>
+          <option value="asc">oldest first</option>
+        </select>
+        <input id="limit" type="number" min="0" value="1000" title="limit (0 = all)">
+        <button type="submit" id="run">Run</button>
+        <button type="button" id="follow">● Live</button>
+        <button type="button" id="stop" disabled>Stop</button>
+      </div>
+    </form>
+  </header>
+
+  <main>
+    <aside>
+      <section>
+        <h3>Saved queries</h3>
+        <div class="savedRow">
+          <input id="saveName" placeholder="name">
+          <button type="button" id="saveBtn">Save</button>
+        </div>
+        <ul id="saved"></ul>
+      </section>
+      <section>
+        <h3>Fields <small>(click to insert)</small></h3>
+        <div id="fields"></div>
+      </section>
+      <section>
+        <h3>Columns</h3>
+        <div id="columns"></div>
+      </section>
+    </aside>
+
+    <section class="results">
+      <canvas id="histogram" height="80"></canvas>
+      <div id="status" class="status">Ready.</div>
+      <div class="tableWrap">
+        <table id="table">
+          <thead><tr id="head"></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

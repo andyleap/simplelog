@@ -1,0 +1,82 @@
+# simplelog agent: DaemonSet on every node. Read-only access to pod logs plus a
+# node-scoped Pod watch for metadata enrichment. The checkpoint lives on a
+# hostPath so a restarted agent resumes from the last acked offset.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: simplelog-agent
+  namespace: simplelog
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: simplelog-agent
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: simplelog-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: simplelog-agent
+subjects:
+  - kind: ServiceAccount
+    name: simplelog-agent
+    namespace: simplelog
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: simplelog-agent
+  namespace: simplelog
+spec:
+  selector:
+    matchLabels: { app: simplelog-agent }
+  template:
+    metadata:
+      labels: { app: simplelog-agent }
+      # Opt this pod out of ingestion so simplelog's own logs are never tailed.
+      annotations: { simplelog.io/ingest: "false" }
+    spec:
+      serviceAccountName: simplelog-agent
+      tolerations:
+        - operator: Exists # run on every node, including control-plane/tainted
+      containers:
+        - name: agent
+          image: ghcr.io/andyleap/simplelog-agent:latest
+          env:
+            - { name: SL_MANAGER_ADDR, value: "simplelog-manager.simplelog.svc:9000" }
+            - { name: SL_LOG_ROOT, value: "/var/log/pods" }
+            - { name: SL_CHECKPOINT, value: "/var/lib/simplelog/checkpoint.db" }
+            - { name: SL_MAX_HELD_BYTES, value: "67108864" } # 64 MiB soft cap
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            # Own namespace is always self-excluded (race-free guard against
+            # log loops, independent of the annotation/informer).
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: pod-logs, mountPath: /var/log/pods, readOnly: true }
+            # /var/log/pods symlinks into the container runtime dir; mount it too.
+            - { name: container-logs, mountPath: /var/lib/docker/containers, readOnly: true }
+            - { name: checkpoint, mountPath: /var/lib/simplelog }
+      volumes:
+        - name: pod-logs
+          hostPath: { path: /var/log/pods }
+        - name: container-logs
+          hostPath: { path: /var/lib/docker/containers }
+        - name: checkpoint
+          hostPath: { path: /var/lib/simplelog, type: DirectoryOrCreate }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: simplelog
