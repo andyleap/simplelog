@@ -1,7 +1,10 @@
-# Used by GoReleaser: the binary is already built and placed in the build
-# context, so this just wraps it in a distroless image. BIN selects which
+# Used by GoReleaser (dockers_v2): the prebuilt binaries are placed in the build
+# context under <os>/<arch>/<binary> for each target platform. BuildKit provides
+# TARGETOS/TARGETARCH automatically for multi-platform builds; BIN selects which
 # binary (agent or manager) to package.
 FROM gcr.io/distroless/static-debian12
+ARG TARGETOS
+ARG TARGETARCH
 ARG BIN
-COPY ${BIN} /service
+COPY ${TARGETOS}/${TARGETARCH}/${BIN} /service
 ENTRYPOINT ["/service"]
